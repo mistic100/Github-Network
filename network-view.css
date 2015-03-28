@@ -1,0 +1,73 @@
+.network-tooltip, .network-tooltip * {
+  box-sizing:border-box;
+  padding:0px;
+  margin:0px;
+  font-size:12px;
+  line-height:1.2em;
+  font-family:"Arial", sans-serif;
+}
+
+.network-tooltip {
+  position:absolute;
+  border:2px solid #ddd;
+  background:#fff;
+  border-radius:5px;
+  padding:10px;
+}
+
+.network-tooltip header {
+  float:right;
+  font-size:11px;
+  font-family:"Courier", monospace;
+  color:#4183C4;
+}
+
+.network-tooltip aside {
+  float:left;
+  width:36px;
+}
+  .network-tooltip img {
+    width:36px;
+    height:36px;
+  }
+
+.network-tooltip section {
+  margin-left:46px;
+}
+  .network-tooltip h5 {
+    border-bottom:1px solid #ddd;
+    padding-bottom:2px;
+    margin-bottom:3px;
+  }
+
+.network-tooltip:before {
+  content:"";
+  position:absolute;
+  width:0px;
+  height:0px;
+  border-width:8px 10px;
+  border-style:solid;
+  border-color:transparent;
+}
+  .network-tooltip.bottom-right:before,
+  .network-tooltip.bottom-left:before  {
+    border-bottom-color:#ddd;
+    top:-16px;
+  }
+  .network-tooltip.top-right:before,
+  .network-tooltip.top-left:before  {
+    border-top-color:#ddd;
+    bottom:-16px;
+  }
+  .network-tooltip.bottom-right:before,
+  .network-tooltip.top-right:before {
+    left:8px;
+  }
+  .network-tooltip.bottom-left:before,
+  .network-tooltip.top-left:before {
+    right:8px;
+  }
+  .network-tooltip.bottom-center:before,
+  .network-tooltip.top-center:before {
+    display:none;
+  }

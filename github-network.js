@@ -3,10 +3,46 @@
  */
 var GithubNetwork = function(container, options) {
   this.container = container;
-  this.config = $.extend(true, {}, GithubNetwork.DEFAULTS, options);
-  this.view = null;
+  this.config = $.extend(true, {}, GithubNetwork.DEFAULTS);
+  this.view = new NetworkView(this.container);
 
-  var that = this;
+  if (options) {
+    this.setOptions(options);
+  }
+};
+
+GithubNetwork.DEFAULTS = $.extend(true, {
+  repository: null,
+
+  cacheAge: 60
+}, NetworkView.DEFAULTS);
+
+/**
+ * Change respository
+ */
+GithubNetwork.prototype.setRepository = function(repository) {
+  this.setOptions({
+    repository: repository
+  });
+};
+
+/**
+ * Load options
+ */
+GithubNetwork.prototype.setOptions = function(options) {
+  $.extend(true, this.config, options);
+
+  if (options.repository) {
+    this.load();
+  }
+
+  this.view.setOptions(this.config);
+};
+
+/**
+ * Load data and refresh
+ */
+GithubNetwork.prototype.load = function() {
   var url = encodeURIComponent('https://github.com/' + this.config.repository + '/network/meta');
 
   this.getCachedJSON('http://json2jsonp.com/?url=' + url + '&callback=?', function(meta) {
@@ -18,41 +54,36 @@ var GithubNetwork = function(container, options) {
       });
     });
 
-    var url = encodeURIComponent('https://github.com/' + that.config.repository + '/network/chunk?start=0&end=' + nbCommits);
+    var url = encodeURIComponent('https://github.com/' + this.config.repository + '/network/chunk?start=0&end=' + nbCommits);
 
-    that.getCachedJSON('http://json2jsonp.com/?url=' + url + '&callback=?', function(chunk) {
+    this.getCachedJSON('http://json2jsonp.com/?url=' + url + '&callback=?', function(chunk) {
       var data = {
         meta: meta,
         commits: chunk.commits
       };
 
-      that.view = new NetworkView(that.container, data, that.config);
+      this.view.setData(data);
     });
   });
 };
-
-GithubNetwork.DEFAULTS = $.extend(true, {
-  repository: null,
-
-  cacheAge: 60
-}, NetworkView.DEFAULTS);
 
 /**
  * Download JSON file with local storage cache
  */
 GithubNetwork.prototype.getCachedJSON = function(url, callback) {
+  var self = this;
   var hash = this.hashCode(url);
   var cachedData = window.localStorage[hash];
   var cachedTime = window.localStorage[hash+'_time'];
 
   if (cachedData && cachedTime > new Date().getTime() - this.config.cacheAge*60000) {
-    callback(JSON.parse(cachedData));
+    callback.call(this, JSON.parse(cachedData));
   }
   else {
     $.getJSON(url, function (data) {
       window.localStorage[hash] = JSON.stringify(data);
       window.localStorage[hash+'_time'] = new Date().getTime();
-      callback(data);
+      callback.call(self, data);
     });
   }
 };

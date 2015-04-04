@@ -1,116 +1,55 @@
 /**
  * View for Network with axis, drag-nav, commits messages, etc.
  */
-var NetworkView = function(container, data, options) {
+var NetworkView = function(container, options, data) {
   this.container = container;
-  this.data = data;
-  this.data.commitsById = {};
-  this.data.blocksById = {};
-  this.data.usersById = {};
-  this.drawnLabels = {};
-  this.config = $.extend(true, {}, NetworkView.DEFAULTS, options);
+  this.config = $.extend(true, {}, NetworkView.DEFAULTS);
+  this.network = null;
+  this.id = ++NetworkView.UID;
 
-  // axis size needs to be relevant
-  if (!this.config.xAxis.enabled) this.config.xAxis.height = 0;
-  if (!this.config.yAxis.enabled) this.config.yAxis.width = 0;
-
-  this.data.meta.blocks.forEach(function(block, i) {
-    // add index and end to blocks
-    block.index = i;
-    block.end = block.start + block.count - 1;
-
-    // store blocks by user name
-    this.data.blocksById[block.name] = block;
-  }, this);
-
-  this.data.commits.forEach(function(commit) {
-    // store commits by id
-    this.data.commitsById[commit.id] = commit;
-  }, this);
-
-  this.data.meta.users.forEach(function(user) {
-    // store users by name
-    this.data.usersById[user.name] = user;
-  }, this);
-
-  // find the number of lines in the last block displayed
-  var lastBlock = this.config.onlyMe ? this.data.meta.blocks[0] : this.data.meta.blocks.slice(-1)[0];
-
-  this.prop = {
-    nbCommits: this.data.commits.length,
-    nbLines: lastBlock.start + lastBlock.count,
-    width: this.container.offsetWidth,
-    height: this.container.offsetHeight,
-    top: this.container.offsetTop,
-    left: this.container.offsetLeft,
-    gridWidth: 0,
-    gridHeight: 0,
-    maxScroll: {}
-  };
-
-  this.prop.gridWidth = this.prop.width - this.config.yAxis.width;
-  this.prop.gridHeight = this.prop.height - this.config.xAxis.height;
-
-  this.state = {
-    scrollTop: 0,
-    scrollLeft: 0,
-    dragging: false,
-    mouseX: 0,
-    mouseY: 0,
-    activeCommit: null,
-    minTime: 0,
-    maxTime: this.prop.nbCommits,
-    minSpace: 0,
-    maxSpace: this.prop.nbLines
-  };
-
-  // view is horizontally centered on last origin/master commit
-  this.state.scrollLeft = -Math.round((this.data.meta.focus+1) * this.config.space.h - this.prop.gridWidth/2);
+  this.resetState();
 
   // container must be positionned
-  if (['','static'].indexOf(this.container.style.position) !== -1) {
-    this.container.style.position = 'relative';
+  if (['','static'].indexOf(this.container[0].style.position) !== -1) {
+    this.container[0].style.position = 'relative';
   }
 
   // create canvas
-  this.canvas = $('<canvas></canvas>').appendTo(this.container)[0];
-  this.ctx = this.canvas.getContext('2d');
-
-  this.canvas.width = this.prop.width;
-  this.canvas.height = this.prop.height;
-  this.canvas.style.cursor = 'move';
+  this.canvas = $('<canvas class="network-view"></canvas>').appendTo(this.container);
+  this.ctx = this.canvas[0].getContext('2d');
 
   // create holder of the whole network
-  var networkCanvas = $('<canvas></canvas>').hide().insertAfter(this.canvas);
-  this.network = new Network(networkCanvas[0], this.data, this.config);
-
-  this.prop.maxScroll = {
-    t: 0,
-    b: -this.network.prop.height + this.prop.height + this.config.xAxis.height,
-    l: this.prop.gridWidth/2 - this.config.space.h*2,
-    r: -this.network.prop.width + this.prop.gridWidth/2
-  };
+  var networkCanvas = $('<canvas class="network-holder"></canvas>').insertAfter(this.canvas);
+  this.network = new Network(networkCanvas);
 
   // create div for tooltip
-  if (this.config.tooltip.enabled) {
-    this.tooltip = $(
-      '<div class="network-tooltip">'+
-        '<aside><img src=""></aside>'+
-        '<header></header>'+
-        '<section><h5></h5><p></p></section>'+
-      '</div>'
-    ).hide().insertBefore(this.canvas);
-  }
+  this.tooltip = $(
+    '<div class="network-tooltip">'+
+      '<aside><img src=""></aside>'+
+      '<header></header>'+
+      '<section><h5></h5><p></p></section>'+
+    '</div>'
+  ).hide().prependTo(this.container);
 
   // add event listeners
-  this.canvas.addEventListener('mousedown', this.mouseDown.bind(this));
-  this.canvas.addEventListener('mousemove', this.mouseMove.bind(this));
-  this.canvas.addEventListener('mouseup', this.mouseUp.bind(this));
+  this.canvas.on('mousedown', this.mouseDown.bind(this));
+  this.canvas.on('mousemove', this.mouseMove.bind(this));
+  this.canvas.on('mouseup', this.mouseUp.bind(this));
 
-  this.drawAll();
+  if (options) {
+    this.setOptions(options, false);
+  }
+
+  if (data) {
+    this.setData(data);
+  }
 };
 
+NetworkView.UID = 0;
+
 NetworkView.DEFAULTS = $.extend(true, {
+  autoResize: false,
+
   border: {
     width: 1,
     color: '#DDDDDD'
@@ -165,6 +104,11 @@ NetworkView.DEFAULTS = $.extend(true, {
       width: 1,
       height: 6,
       color: '#DDDDDD'
+    },
+    activeLine: {
+      enabled: true,
+      width: 1,
+      color: 'rgba(0,0,0,0.5)'
     }
   },
 
@@ -194,6 +138,151 @@ NetworkView.DEFAULTS = $.extend(true, {
 }, Network.DEFAULTS);
 
 /**
+ * Reset everything
+ */
+NetworkView.prototype.resetState = function() {
+  this.data = null;
+
+  this.prop = {
+    nbCommits: 0,
+    nbLines: 0,
+    width: 0,
+    height: 0,
+    top: 0,
+    left: 0,
+    gridWidth: 0,
+    gridHeight: 0,
+    maxScroll: {
+      t: 0,
+      b: 0,
+      l: 0,
+      r: 0
+    }
+  };
+
+  this.state = {
+    scrollTop: 0,
+    scrollLeft: 0,
+    dragging: false,
+    mouseX: 0,
+    mouseY: 0,
+    activeCommit: null,
+    activeUser: null,
+    activeDate: null,
+    minTime: 0,
+    maxTime: 0,
+    minSpace: 0,
+    maxSpace: 0
+  };
+};
+
+/**
+ * Load data and refresh
+ */
+NetworkView.prototype.setData = function(data) {
+  this.resetState();
+
+  this.data = data;
+
+  if (!this.data) {
+    this.ctx.clearRect(0, 0, this.prop.width, this.prop.height);
+    return;
+  }
+
+  this.data.commitsById = {};
+  this.data.blocksById = {};
+  this.data.usersById = {};
+
+  this.data.meta.blocks.forEach(function(block, i) {
+    // add index and end to blocks
+    block.index = i;
+    block.end = block.start + block.count - 1;
+
+    // store blocks by user name
+    this.data.blocksById[block.name] = block;
+  }, this);
+
+  this.data.commits.forEach(function(commit) {
+    // store commits by id
+    this.data.commitsById[commit.id] = commit;
+  }, this);
+
+  this.data.meta.users.forEach(function(user) {
+    // store users by name
+    this.data.usersById[user.name] = user;
+  }, this);
+
+  // find the number of lines in the last block displayed
+  var lastBlock = this.config.onlyMe ? this.data.meta.blocks[0] : this.data.meta.blocks.slice(-1)[0];
+
+  this.prop.nbCommits = this.state.maxTime = this.data.commits.length;
+  this.prop.nbLines = this.state.maxSpace = lastBlock.start + lastBlock.count;
+
+  this.network.setData(this.data);
+
+  this.refresh();
+};
+
+/**
+ * Load options and refresh
+ */
+NetworkView.prototype.setOptions = function(options, redraw) {
+  $.extend(true, this.config, options);
+
+  // axis size needs to be relevant
+  if (!this.config.xAxis.enabled) this.config.xAxis.height = 0;
+  if (!this.config.yAxis.enabled) this.config.yAxis.width = 0;
+
+  this.network.setOptions(options, false);
+
+  if (redraw !== false) {
+    this.setData(this.data);
+  }
+
+  if (this.config.autoResize) {
+    $(window).on('resize.network'+this.id, this.refresh.bind(this));
+  }
+  else {
+    $(window).off('resize.network'+this.id);
+  }
+};
+
+/**
+ * Recompute all variables depending on container size and refresh
+ */
+NetworkView.prototype.refresh = function() {
+  if (!this.data) {
+    return;
+  }
+
+  this.prop.width = this.container[0].offsetWidth;
+  this.prop.height = this.container[0].offsetHeight;
+  this.prop.top = this.container[0].offsetTop;
+  this.prop.left = this.container[0].offsetLeft;
+  this.prop.gridWidth = this.prop.width - this.config.yAxis.width;
+  this.prop.gridHeight = this.prop.height - this.config.xAxis.height;
+
+  this.prop.maxScroll = {
+    t: 0,
+    b: -this.network.prop.height + this.prop.height + this.config.xAxis.height,
+    l: this.prop.gridWidth/2 - this.config.space.h*2,
+    r: -this.network.prop.width + this.prop.gridWidth/2
+  };
+
+  if (this.state.scrollLeft == 0) {
+    // view is horizontally centered on last origin/master commit
+    this.focusCommit(this.data.meta.focus, false);
+  }
+
+  this.canvas[0].width = this.prop.width;
+  this.canvas[0].height = this.prop.height;
+  this.canvas[0].style.width = this.prop.width;
+  this.canvas[0].style.height = this.prop.height;
+
+  requestAnimationFrame(this.drawAll.bind(this));
+};
+
+/**
  * Draw everything
  */
 NetworkView.prototype.drawAll = function() {
@@ -207,6 +296,7 @@ NetworkView.prototype.drawAll = function() {
   this.drawTitle();
   this.drawNetwork();
   this.drawActiveCommit();
+  this.drawActiveDate();
   this.drawBorders();
 };
 
@@ -217,8 +307,10 @@ NetworkView.prototype.drawNetwork = function() {
   // copy the visible chunk from the network canvas
   var sourceX = -this.state.scrollLeft;
   var sourceY = -this.state.scrollTop;
-  var sourceWidth = destWidth = this.prop.gridWidth;
-  var sourceHeight = destHeight = this.prop.gridHeight;
+  var sourceWidth = this.prop.gridWidth;
+  var destWidth = this.prop.gridWidth;
+  var sourceHeight = this.prop.gridHeight;
+  var destHeight = this.prop.gridHeight;
   var destX = this.config.yAxis.width;
   var destY = this.config.xAxis.height;
 
@@ -240,7 +332,7 @@ NetworkView.prototype.drawNetwork = function() {
     sourceHeight = destHeight = this.network.prop.height - sourceY;
   }
 
-  this.ctx.drawImage(this.network.canvas, sourceX, sourceY, sourceWidth, sourceHeight, destX, destY, destWidth, destHeight);
+  this.ctx.drawImage(this.network.canvas[0], sourceX, sourceY, sourceWidth, sourceHeight, destX, destY, destWidth, destHeight);
 };
 
 /**
@@ -293,9 +385,14 @@ NetworkView.prototype.drawActiveCommit = function() {
     // delayed display of avatar
     if (commit.gravatar) {
       var that = this;
-      $('<img>').attr('src', commit.gravatar).load(function() {
-        that.tooltip.find('img').attr('src', commit.gravatar);
-      });
+      var img = $('<img>').attr('src', commit.gravatar)
+        .load(function() {
+          that.tooltip.find('img').attr('src', commit.gravatar);
+          delete img;
+        })
+        .error(function() {
+          delete img;
+        });
     }
 
     var style = {
@@ -331,6 +428,26 @@ NetworkView.prototype.drawActiveCommit = function() {
         opacity: 1
       });
   }
+};
+
+/**
+ * Draw the active date if any
+ */
+NetworkView.prototype.drawActiveDate = function() {
+  if (!this.state.activeDate || !this.config.xAxis.activeLine.enabled) {
+    return;
+  }
+
+  var xPos = this.getCoords([this.data.meta.dates.indexOf(this.state.activeDate), 0])[0];
+  var offset = this.config.xAxis.activeLine.width/2;
+
+  this.ctx.strokeStyle = this.config.xAxis.activeLine.color;
+  this.ctx.lineWidth = this.config.xAxis.activeLine.width;
+
+  this.ctx.beginPath();
+  this.ctx.moveTo(xPos - offset, this.config.xAxis.height);
+  this.ctx.lineTo(xPos - offset, this.prop.height);
+  this.ctx.stroke();
 };
 
 /**
@@ -398,11 +515,12 @@ NetworkView.prototype.drawXAxis = function() {
     return;
   }
 
-  // extract only visible dates
-  var datesToDraw = this.data.meta.dates.slice(this.state.minTime, this.state.maxTime);
+  // extract only visible dates (add 2 dates back to prevent display bugs)
+  var minTime = Math.max(0, this.state.minTime-2);
+  var datesToDraw = this.data.meta.dates.slice(minTime, this.state.maxTime);
 
   // compute first horizontal position
-  var xPos = Math.round((this.state.minTime+0.5) * this.config.space.h + this.state.scrollLeft + this.config.yAxis.width);
+  var xPos = this.getCoords([minTime, 0])[0];
 
   // add background
   this.ctx.fillStyle = this.config.xAxis.background;
@@ -424,25 +542,25 @@ NetworkView.prototype.drawXAxis = function() {
   if (this.config.xAxis.days.enabled || this.config.xAxis.ticks.enabled) {
     var current = ['0000','00','00'];
 
-    datesToDraw.forEach(function(date) {
+    datesToDraw.forEach(function(date, i) {
       if (date != current.join('-')) {
-        date = date.split('-');
+        var cmp = date.split('-');
 
         if (this.config.xAxis.days.enabled) {
-          // draw month (not the first one)
-          if (date[1] != current[1] && current[0] != 0) {
+          // draw month, not the first visible unless it is the very first
+          if (cmp[1] != current[1] && (current[0] != 0 || date == this.data.meta.dates[0])) {
             this.ctx.save();
             this.ctx.textAlign = 'left';
             this.ctx.textBaseline = 'top';
             this.ctx.font  = this.getFontStyle($.extend({}, this.config.xAxis.font, {style:'bold'}));
 
-            var text = this.config.lang.shortMonths[date[1]-1] + '\' ' + date[0].slice(-2);
-            this.ctx.fillText(text, xPos-5, 5);
+            var text = this.config.lang.shortMonths[cmp[1]-1] + '\' ' + cmp[0].slice(-2);
+            this.ctx.fillText(text, xPos - this.config.xAxis.font.size/2, 5);
             this.ctx.restore();
           }
 
           // draw day
-          this.ctx.fillText(date[2], xPos - this.config.xAxis.font.size*0.1, this.config.xAxis.height-this.config.xAxis.ticks.height);
+          this.ctx.fillText(cmp[2], xPos - this.config.xAxis.font.size*0.1, this.config.xAxis.height-this.config.xAxis.ticks.height);
         }
 
         // draw ticks
@@ -455,7 +573,7 @@ NetworkView.prototype.drawXAxis = function() {
           this.ctx.stroke();
         }
 
-        current = date;
+        current = cmp;
       }
 
       xPos+= this.config.space.h;
@@ -490,7 +608,7 @@ NetworkView.prototype.drawYAxis = function() {
   }
 
   // compute first vertical position
-  var yPos = Math.round(blocksToDraw[0].start * this.config.space.v + this.state.scrollTop + this.config.xAxis.height);
+  var yPos = this.getCoords([0, blocksToDraw[0].start-0.5])[1];
 
   if (this.config.yAxis.border.width) {
     this.ctx.strokeStyle = this.config.yAxis.border.color;
@@ -565,7 +683,7 @@ NetworkView.prototype.drawGrid = function() {
   }
 
   // compute first vertical position
-  var yPos = Math.round(blocksToDraw[0].start * this.config.space.v + this.state.scrollTop + this.config.xAxis.height);
+  var yPos = this.getCoords([0, blocksToDraw[0].start-0.5])[1];
 
   if (this.config.grid.border.width) {
     this.ctx.strokeStyle = this.config.grid.border.color;
@@ -604,6 +722,10 @@ NetworkView.prototype.drawGrid = function() {
  * Set dragging flag
  */
 NetworkView.prototype.mouseDown = function() {
+  if (!this.data) {
+    return;
+  }
+
   this.state.dragging = true;
 };
 
@@ -612,6 +734,10 @@ NetworkView.prototype.mouseDown = function() {
  * Handles drag navigation & mouse hovers
  */
 NetworkView.prototype.mouseMove = function(e) {
+  if (!this.data) {
+    return;
+  }
+
   var redraw = false;
 
   if (this.state.dragging) {
@@ -621,29 +747,43 @@ NetworkView.prototype.mouseMove = function(e) {
     this.state.activeCommit = null;
     this.state.activeUser = null;
 
-    this.canvas.style.cursor = 'move';
-
     redraw = true;
   }
   else {
-    var hoveredCommit = this.hoveredCommit(e);
-    if (this.state.activeCommit != hoveredCommit) {
-      this.state.activeCommit = hoveredCommit;
+    var cmp = [
+      function() {
+        var hoveredCommit = this.hoveredCommit(e);
+        if (this.state.activeCommit != hoveredCommit) {
+          this.state.activeCommit = hoveredCommit;
 
-      this.canvas.style.cursor = !!hoveredCommit ? 'pointer' : 'move';
+          this.canvas[0].style.cursor = !!hoveredCommit ? 'pointer' : 'move';
 
-      redraw = true;
-    }
-    else {
-      var hoveredUser = this.hoveredUser(e);
-      if (this.state.activeUser != hoveredUser) {
-        this.state.activeUser = hoveredUser;
+          return true;
+        }
+      },
+      function() {
+        var hoveredUser = this.hoveredUser(e);
+        if (this.state.activeUser != hoveredUser) {
+          this.state.activeUser = hoveredUser;
 
-        this.canvas.style.cursor = !!hoveredUser ? 'pointer' : 'move';
+          this.canvas[0].style.cursor = !!hoveredUser ? 'pointer' : 'move';
 
-        redraw = true;
+          return true;
+        }
+      },
+      function() {
+        var hoveredDate = this.hoveredDate(e);
+        if (this.state.activeDate != hoveredDate) {
+          this.state.activeDate = hoveredDate;
+
+          return true
+        }
       }
-    }
+    ];
+
+    redraw = cmp.some(function(fct) {
+      return fct.call(this);
+    }, this);
   }
 
   if (redraw) {
@@ -659,6 +799,10 @@ NetworkView.prototype.mouseMove = function(e) {
  * Open page to commit or fork & remove dragging flag
  */
 NetworkView.prototype.mouseUp = function() {
+  if (!this.data) {
+    return;
+  }
+
   var redraw = false;
 
   if (this.state.activeCommit) {
@@ -682,7 +826,7 @@ NetworkView.prototype.mouseUp = function() {
   }
 
   if (redraw) {
-    this.drawAll();
+    requestAnimationFrame(this.drawAll.bind(this));
   }
 
   this.state.dragging = false;
@@ -697,8 +841,12 @@ NetworkView.prototype.hoveredCommit = function(e) {
     e.pageY - this.prop.top
   ];
 
+  if (mousePos[0] < this.config.yAxis.width || mousePos[1] < this.config.xAxis.height) {
+    return null;
+  }
+
   var r2 = this.config.network.pointRadius*2;
-  var result;
+  var result = null;
 
   this.data.commits.slice(this.state.minTime, this.state.maxTime).some(function(commit) {
     if (commit.space >= this.state.minSpace && commit.space <= this.state.maxSpace) {
@@ -725,11 +873,11 @@ NetworkView.prototype.hoveredUser = function(e) {
     e.pageY - this.prop.top - this.config.xAxis.height - this.state.scrollTop
   ];
 
-  var result;
-
   if (mousePos[0] > this.config.yAxis.width) {
-    return result;
+    return null;
   }
+
+  var result = null;
 
   this.data.meta.blocks.some(function(block) {
     if (block.end >= this.state.minSpace) {
@@ -743,6 +891,36 @@ NetworkView.prototype.hoveredUser = function(e) {
     }
 
     return block.end >= this.state.maxSpace;
+  }, this);
+
+  return result;
+};
+
+/**
+ * Get hovered date if any
+ */
+NetworkView.prototype.hoveredDate = function(e) {
+  var mousePos = [
+    e.pageX - this.prop.left,
+    e.pageY - this.prop.top
+  ];
+
+  if (mousePos[1] > this.config.xAxis.height) {
+    return null;
+  }
+
+  var result = null;
+  var fs2 = Math.round(this.config.xAxis.font.size/2);
+
+  this.data.meta.dates.slice(this.state.minTime, this.state.maxTime).some(function(date, i) {
+    if (this.state.minTime + i == this.data.meta.dates.indexOf(date)) {
+      var datePos = this.getCoords([this.state.minTime + i, 0])[0];
+
+      if (mousePos[0] >= datePos-fs2 && mousePos[0] <= datePos+fs2) {
+        result = date;
+        return true;
+      }
+    }
   }, this);
 
   return result;
@@ -790,16 +968,12 @@ NetworkView.prototype.getStringEllipsed = function(str, maxWidth, padding) {
 /**
  * Utility to get canvas font property
  */
-NetworkView.prototype.getFontStyle = function(font) {
-  return Network.prototype.getFontStyle.call(this, font);
-};
+NetworkView.prototype.getFontStyle = Network.prototype.getFontStyle;
 
 /**
  * Get color for particular space
  */
-NetworkView.prototype.getSpaceColor = function(space) {
-  return Network.prototype.getSpaceColor.call(this, space);
-};
+NetworkView.prototype.getSpaceColor = Network.prototype.getSpaceColor;
 
 /**
  * Translate "git" coords (space, time) to pixels
@@ -810,4 +984,88 @@ NetworkView.prototype.getCoords = function(c) {
     tmp[0] + this.config.yAxis.width + this.state.scrollLeft,
     tmp[1] + this.config.xAxis.height + this.state.scrollTop
   ];
+};
+
+/**
+ * Change top scroll to focus a particular user
+ */
+NetworkView.prototype.focusUser = function(user, draw) {
+  var space;
+
+  // a space key was passed
+  if (parseInt(user) == user) {
+    if (user < 0 || user >= this.prop.nbLines) {
+      throw "Invalid user space";
+    }
+    space = user;
+  }
+  // a username was passed
+  else {
+    if (!this.data.blocksById[user]) {
+      throw "Invalid user name";
+    }
+    space = this.data.blocksById[user].start;
+  }
+
+  this.state.scrollTop = Math.max(this.prop.maxScroll.b, -Math.round(space * this.config.space.v));
+
+  if (draw || draw === undefined) {
+    requestAnimationFrame(this.drawAll.bind(this));
+  }
+};
+
+/**
+ * Change left scroll to focus a particular commit
+ */
+NetworkView.prototype.focusCommit = function(commit, draw) {
+  var time;
+
+  // a time key was passed
+  if (parseInt(commit) == commit) {
+    if (commit < 0 || commit >= this.prop.nbCommits) {
+      throw "Invalid commit time";
+    }
+    time = commit;
+  }
+  else if (/^[a-z0-9]+$/i.test(commit)) {
+    // a complete hash was passed
+    if (commit.length == 40) {
+      if (!this.data.commitsById[commit]) {
+        throw "Invalid commit hash";
+      }
+      time = this.data.commitsById[commit].time;
+    }
+    // a partial hash was passed
+    else {
+      for (var hash in this.data.commitsById) {
+        if (hash.startsWith(commit)) {
+          time = this.data.commitsById[hash].time;
+          break;
+        }
+      }
+      if (time === undefined) {
+        throw "Invalid commit hash";
+      }
+    }
+  }
+  else {
+    // a date was passed
+    var date = moment(commit);
+    if (!date.isValid()) {
+      throw "Invalid commit date";
+    }
+    var dateStr = date.format('YYYY-MM-DD');
+    var dateIdx = [this.data.meta.dates.indexOf(dateStr), this.data.meta.dates.lastIndexOf(dateStr)];
+    if (dateIdx[0] == -1) {
+      throw "Invalid commit date";
+    }
+    time = Math.round((dateIdx[0]+dateIdx[1])/2);
+  }
+
+
+  this.state.scrollLeft = -Math.round(time * this.config.space.h - this.prop.gridWidth/2);
+
+  if (draw || draw === undefined) {
+    requestAnimationFrame(this.drawAll.bind(this));
+  }
 };

@@ -1,33 +1,20 @@
 /**
  * Class to draw a full Git network in a canvas
  */
-var Network = function(canvas, data, options) {
+var Network = function(canvas, options, data) {
   this.canvas = canvas;
-  this.ctx = this.canvas.getContext('2d');
+  this.ctx = this.canvas[0].getContext('2d');
+  this.config = $.extend(true, {}, Network.DEFAULTS);
 
-  this.data = data;
-  this.drawnLabels = {};
-  this.config = $.extend(true, {}, Network.DEFAULTS, options);
+  this.resetState();
 
-  // find the number of lines in the last block displayed
-  var lastBlock = this.config.onlyMe ? this.data.meta.blocks[0] : this.data.meta.blocks.slice(-1)[0];
+  if (options) {
+    this.setOptions(options, false);
+  }
 
-  this.prop = {
-    nbCommits: this.data.commits.length,
-    nbLines: lastBlock.start + lastBlock.count,
-    width: 0,
-    height: 0
-  };
-
-  this.prop.width = (this.prop.nbCommits+1) * this.config.space.h;
-  this.prop.height = (this.prop.nbLines+1) * this.config.space.v + 200;
-
-  this.canvas.width = this.prop.width;
-  this.canvas.height = this.prop.height;
-  this.canvas.style.width = this.width;
-  this.canvas.style.height = this.height;
-
-  this.draw();
+  if (data) {
+    this.setData();
+  }
 };
 
 Network.DEFAULTS = {
@@ -62,13 +49,73 @@ Network.DEFAULTS = {
 };
 
 /**
+ * Reset everything
+ */
+Network.prototype.resetState = function() {
+  this.data = null;
+
+  this.prop = {
+    nbCommits: 0,
+    nbLines: 0,
+    width: 0,
+    height: 0
+  };
+
+  this.state = {
+    drawnLabels: {}
+  };
+};
+
+/**
+ * Load data and refresh
+ */
+Network.prototype.setData = function(data) {
+  this.resetState();
+
+  this.data = data;
+
+  if (!this.data) {
+    this.ctx.clearRect(0, 0, this.prop.width, this.prop.height);
+    return;
+  }
+
+  // find the number of lines in the last block displayed
+  var lastBlock = this.config.onlyMe ? this.data.meta.blocks[0] : this.data.meta.blocks.slice(-1)[0];
+
+  this.prop.nbCommits = this.data.commits.length;
+  this.prop.nbLines = lastBlock.start + lastBlock.count;
+  this.prop.width = (this.prop.nbCommits+1) * this.config.space.h;
+  this.prop.height = (this.prop.nbLines+1) * this.config.space.v + 200;
+
+  this.canvas[0].width = this.prop.width;
+  this.canvas[0].height = this.prop.height;
+  this.canvas[0].style.width = this.prop.width;
+  this.canvas[0].style.height = this.prop.height;
+
+  this.render();
+};
+
+/**
+ * Load options and refresh
+ */
+Network.prototype.setOptions = function(options, redraw) {
+  $.extend(true, this.config, options);
+
+  if (redraw !== false) {
+    this.setData(this.data);
+  }
+};
+
+/**
  * Draw the whole network
  */
-Network.prototype.draw = function() {
+Network.prototype.render = function() {
+  this.ctx.clearRect(0, 0, this.prop.width, this.prop.height);
+
   // draw lines
   this.data.commits.forEach(function(commit) {
     // only selected spaces
-    if (commit.space <= this.prop.nbLines) {
+    if (commit.space < this.prop.nbLines) {
       commit.parents.forEach(function(parent, i) {
         parent = { time: parent[1], space: parent[2] };
 
@@ -92,7 +139,7 @@ Network.prototype.draw = function() {
 
   // draw points
   this.data.commits.forEach(function(commit) {
-    if (commit.space <= this.prop.nbLines) {
+    if (commit.space < this.prop.nbLines) {
       this.drawPoint(commit);
     }
   }, this);
@@ -111,8 +158,7 @@ Network.prototype.draw = function() {
         }
       }, this);
 
-
-      return !this.config.onlyMe || i===0;
+      return !(this.config.onlyMe && i===0);
     }, this);
   }
 };
@@ -246,11 +292,11 @@ Network.prototype.drawLabel = function(commit, name) {
     };
 
     // labels on same commit are stacked
-    if (!this.drawnLabels[commit.id]) {
-      this.drawnLabels[commit.id] = 0;
+    if (!this.state.drawnLabels[commit.id]) {
+      this.state.drawnLabels[commit.id] = 0;
     }
-    pos[1]+= this.drawnLabels[commit.id];
-    this.drawnLabels[commit.id]+= m.w + m.a + m.p*2 + m.l;
+    pos[1]+= this.state.drawnLabels[commit.id];
+    this.state.drawnLabels[commit.id]+= m.w + m.a + m.p*2 + m.l;
 
     // we move and rotate for easier operations
     this.ctx.save();

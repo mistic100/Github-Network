@@ -1,3 +1,11 @@
+.network-view {
+  cursor:move;
+}
+
+.network-holder {
+  display:none;
+}
+
 .network-tooltip, .network-tooltip * {
   box-sizing:border-box;
   padding:0px;

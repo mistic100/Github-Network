@@ -11,11 +11,27 @@ var GithubNetwork = function(container, options) {
   }
 };
 
-GithubNetwork.DEFAULTS = deepmerge({
+GithubNetwork.DEFAULTS = deepmerge(NetworkView.DEFAULTS, {
   repository: null,
 
-  cacheAge: 60
-}, NetworkView.DEFAULTS);
+  cacheAge: 60,
+  
+  title: {
+    link: 'https://github.com/{{repository}}'
+  },
+  
+  yAxis: {
+    link: 'https://github.com/{{user.name}}/{{user.repo}}'
+  },
+  
+  network: {
+    link: 'https://github.com/{{user.name}}/{{user.repo}}/commit/{{commit.id}}'
+  },
+  
+  tooltip: {
+    defaultGravatar: 'https://i2.wp.com/assets-cdn.github.com/images/gravatars/gravatar-user-420.png'
+  }
+});
 
 /**
  * Change respository
@@ -33,7 +49,14 @@ GithubNetwork.prototype.setOptions = function(options) {
   this.config = deepmerge(this.config, options);
 
   if (options.repository) {
+    if (!options.title || !options.title.text) {
+      this.config.title.text = this.config.repository.split('/')[1];
+    }
+    
     this.load();
+  }
+  else if (this.config.title.text === null && this.config.repository) {
+    this.config.title.text = this.config.repository.split('/')[1];
   }
 
   this.view.setOptions(this.config);

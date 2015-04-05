@@ -5,7 +5,6 @@ var NetworkView = function(container, options, data) {
   this.container = (typeof container == 'string') ? document.getElementById(container) : container;
   this.config = deepmerge({}, NetworkView.DEFAULTS);
   this.network = null;
-  this.id = ++NetworkView.UID;
 
   this.resetState();
 
@@ -48,9 +47,7 @@ var NetworkView = function(container, options, data) {
   }
 };
 
-NetworkView.UID = 0;
-
-NetworkView.DEFAULTS = deepmerge({
+NetworkView.DEFAULTS = deepmerge(Network.DEFAULTS, {
   autoResize: false,
 
   border: {
@@ -60,8 +57,10 @@ NetworkView.DEFAULTS = deepmerge({
 
   title: {
     enabled: true,
-    text: 'Network',
+    text: null,
+    link: null,
     background: '#F7F7F7',
+    backgroundActive: '#EEEEEE',
     font: {
       size: 18,
       family: '"Arial", sans-serif',
@@ -76,7 +75,7 @@ NetworkView.DEFAULTS = deepmerge({
       top: 20,
       left: -20
     },
-    defaultGravatar: 'https://i2.wp.com/assets-cdn.github.com/images/gravatars/gravatar-user-420.png'
+    defaultGravatar: 'https://cdn3.iconfinder.com/data/icons/faticons/32/user-01-48.png'
   },
 
   grid: {
@@ -94,7 +93,8 @@ NetworkView.DEFAULTS = deepmerge({
     height: 40,
     background: '#F7F7F7',
     days: {
-      enabled: true
+      enabled: true,
+      monthLabel: 'MMM YY'
     },
     font: {
       size: 12,
@@ -120,9 +120,7 @@ NetworkView.DEFAULTS = deepmerge({
     width: 120,
     background: ['#FFFFFF', '#F9F9F9'],
     backgroundActive: '#EEEEEE',
-    names: {
-      enabled: true
-    },
+    link: null,
     font: {
       size: 12,
       family: '"Arial", sans-serif',
@@ -134,11 +132,13 @@ NetworkView.DEFAULTS = deepmerge({
       color: '#DDDDDD',
     }
   },
-
-  lang: {
-    shortMonths: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  
+  network: {
+    link: null,
+    
+    pointRadiusActive: 6
   }
-}, Network.DEFAULTS);
+});
 
 /**
  * Reset everything
@@ -172,6 +172,7 @@ NetworkView.prototype.resetState = function() {
     activeCommit: null,
     activeUser: null,
     activeDate: null,
+    activeTitle: false,
     minTime: 0,
     maxTime: 0,
     minSpace: 0,
@@ -235,6 +236,8 @@ NetworkView.prototype.setOptions = function(options, redraw) {
   // axis size needs to be relevant
   if (!this.config.xAxis.enabled) this.config.xAxis.height = 0;
   if (!this.config.yAxis.enabled) this.config.yAxis.width = 0;
+  if (!Array.isArray(this.config.grid.background)) this.config.grid.background = [this.config.grid.background];
+  if (!Array.isArray(this.config.yAxis.background)) this.config.yAxis.background = [this.config.yAxis.background];
 
   this.network.setOptions(options, false);
 
@@ -368,7 +371,7 @@ NetworkView.prototype.drawActiveCommit = function() {
   // add bigger point
   this.ctx.fillStyle = color;
   this.ctx.beginPath();
-  this.ctx.arc(pos[0], pos[1], this.config.network.pointRadius*2, 0, 2*Math.PI);
+  this.ctx.arc(pos[0], pos[1], this.config.network.pointRadiusActive, 0, 2*Math.PI);
   this.ctx.fill();
 
   // add tooltip
@@ -493,7 +496,15 @@ NetworkView.prototype.drawTitle = function() {
   }
 
   // background
-  this.ctx.fillStyle = this.config.title.background;
+  if (this.state.activeTitle) {
+    this.ctx.fillStyle = this.config.title.backgroundActive;
+  }
+  else if (this.config.title.enabled) {
+    this.ctx.fillStyle = this.config.title.background;
+  }
+  else {
+    this.ctx.fillStyle = this.config.xAxis.background;
+  }
   this.ctx.fillRect(0, 0, this.config.yAxis.width, this.config.xAxis.height);
 
   // text
@@ -555,7 +566,7 @@ NetworkView.prototype.drawXAxis = function() {
             this.ctx.textBaseline = 'top';
             this.ctx.font  = this.getFontStyle(deepmerge(this.config.xAxis.font, {style:'bold'}));
 
-            var text = this.config.lang.shortMonths[cmp[1]-1] + '\' ' + cmp[0].slice(-2);
+            var text = moment(date).format(this.config.xAxis.days.monthLabel);
             this.ctx.fillText(text, xPos - this.config.xAxis.font.size/2, 5);
             this.ctx.restore();
           }
@@ -616,11 +627,9 @@ NetworkView.prototype.drawYAxis = function() {
     this.ctx.lineWidth = this.config.yAxis.border.width;
   }
 
-  if (this.config.yAxis.names.enabled) {
-    this.ctx.font = this.getFontStyle(this.config.yAxis.font);
-    this.ctx.textAlign = 'center';
-    this.ctx.textBaseline = 'middle';
-  }
+  this.ctx.font = this.getFontStyle(this.config.yAxis.font);
+  this.ctx.textAlign = 'center';
+  this.ctx.textBaseline = 'middle';
 
   blocksToDraw.forEach(function(block) {
     var height = block.count*this.config.space.v;
@@ -630,18 +639,16 @@ NetworkView.prototype.drawYAxis = function() {
       this.ctx.fillStyle = this.config.yAxis.backgroundActive;
     }
     else {
-      this.ctx.fillStyle = this.config.yAxis.background[block.index%2];
+      this.ctx.fillStyle = this.config.yAxis.background[block.index%this.config.yAxis.background.length];
     }
 
     this.ctx.fillRect(0, yPos, this.config.yAxis.width, height);
 
     // add name
-    if (this.config.yAxis.names.enabled) {
-      var text = this.getStringEllipsed(block.name, this.config.yAxis.width, 10);
+    var text = this.getStringEllipsed(block.name, this.config.yAxis.width, 10);
 
-      this.ctx.fillStyle = this.config.yAxis.font.color;
-      this.ctx.fillText(text, this.config.yAxis.width/2, yPos+height/2);
-    }
+    this.ctx.fillStyle = this.config.yAxis.font.color;
+    this.ctx.fillText(text, this.config.yAxis.width/2, yPos+height/2);
 
     // add bottom border
     if (this.config.yAxis.border.width) {
@@ -696,10 +703,10 @@ NetworkView.prototype.drawGrid = function() {
 
     // add background
     if (block.name == this.state.activeUser) {
-      this.ctx.fillStyle = this.config.yAxis.backgroundActive;
+      this.ctx.fillStyle = this.config.grid.backgroundActive;
     }
     else {
-      this.ctx.fillStyle = this.config.yAxis.background[block.index%2];
+      this.ctx.fillStyle = this.config.grid.background[block.index%this.config.grid.background.length];
     }
 
     this.ctx.fillRect(this.config.yAxis.width, yPos, this.prop.gridWidth, height);
@@ -752,26 +759,40 @@ NetworkView.prototype.mouseMove = function(e) {
   }
   else {
     var cmp = [
+      // hover title
+      function() {
+        var hoveredTitle = this.hoveredTitle(e);
+        if (this.state.activeTitle != hoveredTitle) {
+          this.state.activeTitle = hoveredTitle;
+
+          this.canvas.style.cursor = !!hoveredTitle && this.config.title.link ? 'pointer' : 'move';
+          
+          return true;
+        }
+      },
+      // hover commit
       function() {
         var hoveredCommit = this.hoveredCommit(e);
         if (this.state.activeCommit != hoveredCommit) {
           this.state.activeCommit = hoveredCommit;
 
-          this.canvas.style.cursor = !!hoveredCommit ? 'pointer' : 'move';
+          this.canvas.style.cursor = !!hoveredCommit && this.config.network.link ? 'pointer' : 'move';
 
           return true;
         }
       },
+      // hover user
       function() {
         var hoveredUser = this.hoveredUser(e);
         if (this.state.activeUser != hoveredUser) {
           this.state.activeUser = hoveredUser;
 
-          this.canvas.style.cursor = !!hoveredUser ? 'pointer' : 'move';
+          this.canvas.style.cursor = !!hoveredUser && this.config.yAxis.link ? 'pointer' : 'move';
 
           return true;
         }
       },
+      // hover date
       function() {
         var hoveredDate = this.hoveredDate(e);
         if (this.state.activeDate != hoveredDate) {
@@ -799,7 +820,7 @@ NetworkView.prototype.mouseMove = function(e) {
  * Mouse up event
  * Open page to commit or fork & remove dragging flag
  */
-NetworkView.prototype.mouseUp = function() {
+NetworkView.prototype.mouseUp = function(e) {
   if (!this.data) {
     return;
   }
@@ -807,23 +828,40 @@ NetworkView.prototype.mouseUp = function() {
   var redraw = false;
 
   if (this.state.activeCommit) {
-    var commit = this.data.commitsById[this.state.activeCommit];
-    var user = this.userBySpace(commit.space);
-    var url = 'https://github.com/' + user.name + '/' + user.repo + '/commit/' + commit.id;
+    if (this.config.network.link) {
+      var commit = this.data.commitsById[this.state.activeCommit];
+      var user = this.userBySpace(commit.space);
+      var url = this.fmt(this.config.network.link, {
+        user: user,
+        commit: commit
+      });
 
-    window.open(url);
+      window.open(url);
 
-    this.state.activeCommit = null;
-    redraw = true;
+      this.state.activeCommit = null;
+      redraw = true;
+    }
   }
   else if (this.state.activeUser) {
-    var user = this.data.usersById[this.state.activeUser];
-    var url = 'https://github.com/' + user.name + '/' + user.repo;
+    if (this.config.yAxis.link) {
+      var user = this.data.usersById[this.state.activeUser];
+      var url = this.fmt(this.config.yAxis.link, { user: user });
 
-    window.open(url);
+      window.open(url);
 
-    this.state.activeUser = null;
-    redraw = true;
+      this.state.activeUser = null;
+      redraw = true;
+    }
+  }
+  else if (this.state.activeTitle) {
+    if (this.config.title.link) {
+      var url = this.fmt(this.config.title.link, this.config);
+      
+      window.open(url);
+
+      this.state.activeTitle = false;
+      redraw = true;
+    }
   }
 
   if (redraw) {
@@ -846,7 +884,7 @@ NetworkView.prototype.hoveredCommit = function(e) {
     return null;
   }
 
-  var r2 = this.config.network.pointRadius*2;
+  var r2 = this.config.network.pointRadiusActive;
   var result = null;
 
   this.data.commits.slice(this.state.minTime, this.state.maxTime).some(function(commit) {
@@ -925,6 +963,18 @@ NetworkView.prototype.hoveredDate = function(e) {
   }, this);
 
   return result;
+};
+
+/**
+ * Get hovered title
+ */
+NetworkView.prototype.hoveredTitle = function(e) {
+  var mousePos = [
+    e.pageX - this.prop.left,
+    e.pageY - this.prop.top
+  ];
+  
+  return mousePos[0] <= this.config.yAxis.width && mousePos[1] <= this.config.xAxis.height;
 };
 
 /**
@@ -1087,4 +1137,19 @@ NetworkView.prototype.getOuter = function(t, el) {
   var s = getComputedStyle(el);
   var m = (t == 'Width') ? [s.marginLeft, s.marginRight] : [s.marginTop, s.marginBottom];
   return el['offset'+t] + parseInt(m[0]) + parseInt(m[1]);
+};
+
+/**
+ * Micro templating
+ */
+NetworkView.prototype.fmt = function(str, args) {
+  return str.replace(/{{([a-z0-9_\.]+)}}/g, function(m, k) {
+    var value = args;
+
+    k.split('.').forEach(function(k) {
+      value = value[k];
+    });
+
+    return value;
+  });
 };

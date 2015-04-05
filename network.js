@@ -3,8 +3,8 @@
  */
 var Network = function(canvas, options, data) {
   this.canvas = canvas;
-  this.ctx = this.canvas[0].getContext('2d');
-  this.config = $.extend(true, {}, Network.DEFAULTS);
+  this.ctx = this.canvas.getContext('2d');
+  this.config = deepmerge({}, Network.DEFAULTS);
 
   this.resetState();
 
@@ -87,10 +87,10 @@ Network.prototype.setData = function(data) {
   this.prop.width = (this.prop.nbCommits+1) * this.config.space.h;
   this.prop.height = (this.prop.nbLines+1) * this.config.space.v + 200;
 
-  this.canvas[0].width = this.prop.width;
-  this.canvas[0].height = this.prop.height;
-  this.canvas[0].style.width = this.prop.width;
-  this.canvas[0].style.height = this.prop.height;
+  this.canvas.width = this.prop.width;
+  this.canvas.height = this.prop.height;
+  this.canvas.style.width = this.prop.width;
+  this.canvas.style.height = this.prop.height;
 
   this.render();
 };
@@ -99,7 +99,7 @@ Network.prototype.setData = function(data) {
  * Load options and refresh
  */
 Network.prototype.setOptions = function(options, redraw) {
-  $.extend(true, this.config, options);
+  this.config = deepmerge(this.config, options);
 
   if (redraw !== false) {
     this.setData(this.data);

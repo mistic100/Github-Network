@@ -2,8 +2,8 @@
  * Class that handle network data loading from Github and generates a Network View
  */
 var GithubNetwork = function(container, options) {
-  this.container = container;
-  this.config = $.extend(true, {}, GithubNetwork.DEFAULTS);
+  this.container = (typeof container == 'string') ? document.getElementById(container) : container;
+  this.config = deepmerge({}, GithubNetwork.DEFAULTS);
   this.view = new NetworkView(this.container);
 
   if (options) {
@@ -11,7 +11,7 @@ var GithubNetwork = function(container, options) {
   }
 };
 
-GithubNetwork.DEFAULTS = $.extend(true, {
+GithubNetwork.DEFAULTS = deepmerge({
   repository: null,
 
   cacheAge: 60
@@ -30,7 +30,7 @@ GithubNetwork.prototype.setRepository = function(repository) {
  * Load options
  */
 GithubNetwork.prototype.setOptions = function(options) {
-  $.extend(true, this.config, options);
+  this.config = deepmerge(this.config, options);
 
   if (options.repository) {
     this.load();
@@ -43,9 +43,8 @@ GithubNetwork.prototype.setOptions = function(options) {
  * Load data and refresh
  */
 GithubNetwork.prototype.load = function() {
-  var url = encodeURIComponent('https://github.com/' + this.config.repository + '/network/meta');
-
-  this.getCachedJSON('http://json2jsonp.com/?url=' + url + '&callback=?', function(meta) {
+  var url = 'https://github.com/' + this.config.repository + '/network/meta';
+  this.getCachedJSON(url, function(meta) {
     var nbCommits = 0;
 
     meta.spacemap.forEach(function(spacemap) {
@@ -54,9 +53,8 @@ GithubNetwork.prototype.load = function() {
       });
     });
 
-    var url = encodeURIComponent('https://github.com/' + this.config.repository + '/network/chunk?start=0&end=' + nbCommits);
-
-    this.getCachedJSON('http://json2jsonp.com/?url=' + url + '&callback=?', function(chunk) {
+    var url = 'https://github.com/' + this.config.repository + '/network/chunk?start=0&end=' + nbCommits;
+    this.getCachedJSON(url, function(chunk) {
       var data = {
         meta: meta,
         commits: chunk.commits
@@ -80,11 +78,22 @@ GithubNetwork.prototype.getCachedJSON = function(url, callback) {
     callback.call(this, JSON.parse(cachedData));
   }
   else {
-    $.getJSON(url, function (data) {
+    url = encodeURIComponent(url);
+    url = 'http://json2jsonp.com/?url=' + url + '&callback=_ghnetJSONP';
+
+    window._ghnetJSONP = function(data) {
+      window._ghnetJSONPsrc.parentNode.removeChild(window._ghnetJSONPsrc);
+      delete window._ghnetJSONP;
+      delete window._ghnetJSONPsrc;
+
       window.localStorage[hash] = JSON.stringify(data);
       window.localStorage[hash+'_time'] = new Date().getTime();
       callback.call(self, data);
-    });
+    };
+
+    window._ghnetJSONPsrc = document.createElement('script');
+    window._ghnetJSONPsrc.src = url;
+    document.body.appendChild(window._ghnetJSONPsrc);
   }
 };
 

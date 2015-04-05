@@ -1,0 +1,24 @@
+{
+  "name": "Github-Network",
+  "main": "github-network.js",
+  "version": "0.0.1",
+  "homepage": "https://github.com/mistic100/Github-Network",
+  "authors": [
+    {
+      "name": "Damien \"Mistic\" Sorel",
+      "email": "contact@git.strangeplanet.fr",
+      "homepage": "http://www.strangeplanet.fr"
+    }
+  ],
+  "description": "A custom clone of the Github network view.",
+  "keywords": [
+    "github",
+    "network",
+    "git"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "deepmerge": "~0.2.9",
+    "momentjs": "~2.9.0"
+  }
+}

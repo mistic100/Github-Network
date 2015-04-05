@@ -2,39 +2,42 @@
  * View for Network with axis, drag-nav, commits messages, etc.
  */
 var NetworkView = function(container, options, data) {
-  this.container = container;
-  this.config = $.extend(true, {}, NetworkView.DEFAULTS);
+  this.container = (typeof container == 'string') ? document.getElementById(container) : container;
+  this.config = deepmerge({}, NetworkView.DEFAULTS);
   this.network = null;
   this.id = ++NetworkView.UID;
 
   this.resetState();
 
   // container must be positionned
-  if (['','static'].indexOf(this.container[0].style.position) !== -1) {
-    this.container[0].style.position = 'relative';
+  if (['','static'].indexOf(this.container.style.position) !== -1) {
+    this.container.style.position = 'relative';
   }
 
   // create canvas
-  this.canvas = $('<canvas class="network-view"></canvas>').appendTo(this.container);
-  this.ctx = this.canvas[0].getContext('2d');
+  this.canvas = this.createHTMLNode('<canvas class="network-view"></canvas>');
+  this.container.appendChild(this.canvas);
+  this.ctx = this.canvas.getContext('2d');
 
   // create holder of the whole network
-  var networkCanvas = $('<canvas class="network-holder"></canvas>').insertAfter(this.canvas);
+  var networkCanvas = this.createHTMLNode('<canvas class="network-holder"></canvas>');
+  this.container.appendChild(networkCanvas);
   this.network = new Network(networkCanvas);
 
   // create div for tooltip
-  this.tooltip = $(
+  this.tooltip = this.createHTMLNode(
     '<div class="network-tooltip">'+
       '<aside><img src=""></aside>'+
       '<header></header>'+
       '<section><h5></h5><p></p></section>'+
     '</div>'
-  ).hide().prependTo(this.container);
+  );
+  this.container.insertBefore(this.tooltip, this.container.firstChild);
 
   // add event listeners
-  this.canvas.on('mousedown', this.mouseDown.bind(this));
-  this.canvas.on('mousemove', this.mouseMove.bind(this));
-  this.canvas.on('mouseup', this.mouseUp.bind(this));
+  this.canvas.addEventListener('mousedown', this.mouseDown.bind(this));
+  this.canvas.addEventListener('mousemove', this.mouseMove.bind(this));
+  this.canvas.addEventListener('mouseup', this.mouseUp.bind(this));
 
   if (options) {
     this.setOptions(options, false);
@@ -47,7 +50,7 @@ var NetworkView = function(container, options, data) {
 
 NetworkView.UID = 0;
 
-NetworkView.DEFAULTS = $.extend(true, {
+NetworkView.DEFAULTS = deepmerge({
   autoResize: false,
 
   border: {
@@ -227,7 +230,7 @@ NetworkView.prototype.setData = function(data) {
  * Load options and refresh
  */
 NetworkView.prototype.setOptions = function(options, redraw) {
-  $.extend(true, this.config, options);
+  this.config = deepmerge(this.config, options);
 
   // axis size needs to be relevant
   if (!this.config.xAxis.enabled) this.config.xAxis.height = 0;
@@ -240,10 +243,13 @@ NetworkView.prototype.setOptions = function(options, redraw) {
   }
 
   if (this.config.autoResize) {
-    $(window).on('resize.network'+this.id, this.refresh.bind(this));
+    if (!this._bindedResize) {
+      this._bindedResize = this.refresh.bind(this);
+    }
+    window.addEventListener('resize', this._bindedResize);
   }
-  else {
-    $(window).off('resize.network'+this.id);
+  else if (this._bindedResize) {
+    window.removeEventListener('resize', this._bindedResize);
   }
 };
 
@@ -255,10 +261,10 @@ NetworkView.prototype.refresh = function() {
     return;
   }
 
-  this.prop.width = this.container[0].offsetWidth;
-  this.prop.height = this.container[0].offsetHeight;
-  this.prop.top = this.container[0].offsetTop;
-  this.prop.left = this.container[0].offsetLeft;
+  this.prop.width = this.container.offsetWidth;
+  this.prop.height = this.container.offsetHeight;
+  this.prop.top = this.container.offsetTop;
+  this.prop.left = this.container.offsetLeft;
   this.prop.gridWidth = this.prop.width - this.config.yAxis.width;
   this.prop.gridHeight = this.prop.height - this.config.xAxis.height;
 
@@ -274,10 +280,10 @@ NetworkView.prototype.refresh = function() {
     this.focusCommit(this.data.meta.focus, false);
   }
 
-  this.canvas[0].width = this.prop.width;
-  this.canvas[0].height = this.prop.height;
-  this.canvas[0].style.width = this.prop.width;
-  this.canvas[0].style.height = this.prop.height;
+  this.canvas.width = this.prop.width;
+  this.canvas.height = this.prop.height;
+  this.canvas.style.width = this.prop.width;
+  this.canvas.style.height = this.prop.height;
 
   requestAnimationFrame(this.drawAll.bind(this));
 };
@@ -332,7 +338,7 @@ NetworkView.prototype.drawNetwork = function() {
     sourceHeight = destHeight = this.network.prop.height - sourceY;
   }
 
-  this.ctx.drawImage(this.network.canvas[0], sourceX, sourceY, sourceWidth, sourceHeight, destX, destY, destWidth, destHeight);
+  this.ctx.drawImage(this.network.canvas, sourceX, sourceY, sourceWidth, sourceHeight, destX, destY, destWidth, destHeight);
 };
 
 /**
@@ -351,7 +357,7 @@ NetworkView.prototype.computeMinMax = function() {
  */
 NetworkView.prototype.drawActiveCommit = function() {
   if (!this.state.activeCommit) {
-    if (this.config.tooltip.enabled) this.tooltip.hide();
+    this.tooltip.style.display = 'none';
     return;
   }
 
@@ -367,37 +373,35 @@ NetworkView.prototype.drawActiveCommit = function() {
 
   // add tooltip
   if (this.config.tooltip.enabled) {
-    // needs to be visible to get computed size
-    this.tooltip
-      .show()
-      .css('opacity', 0);
-
+    var t = this.tooltip;
+    var ts = t.style;
     var posClass = ['bottom','right'];
-    var borderPlusPadding = this.tooltip.outerWidth() - this.tooltip.width();
 
-    this.tooltip
-      .css('width', Math.min(350, this.prop.width - this.config.tooltip.offset.left) - borderPlusPadding)
-      .find('img').attr('src', this.config.tooltip.defaultGravatar).end()
-      .find('header').text(commit.date.slice(0, 10)).end()
-      .find('h5').text(commit.author).end()
-      .find('p').text(commit.message).end();
+    ts.display = 'block'; // needs to be visible to get computed size
+    ts.opacity = 0;
+    ts.width = (Math.min(350, this.prop.width - this.config.tooltip.offset.left) - t.offsetWidth + ts.width) + 'px';
+
+    t.querySelectorAll('img')[0].src = this.config.tooltip.defaultGravatar;
+    t.querySelectorAll('header')[0].innerHTML = commit.date.slice(0, 10);
+    t.querySelectorAll('h5')[0].innerHTML = commit.author;
+    t.querySelectorAll('p')[0].innerHTML = commit.message;
 
     // delayed display of avatar
     if (commit.gravatar) {
-      var that = this;
-      var img = $('<img>').attr('src', commit.gravatar)
-        .load(function() {
-          that.tooltip.find('img').attr('src', commit.gravatar);
-          delete img;
-        })
-        .error(function() {
-          delete img;
-        });
+      var img = new Image();
+      img.onload = function() {
+        t.querySelectorAll('img')[0].src = commit.gravatar;
+        delete img;
+      };
+      img.onerror = function() {
+        delete img;
+      };
+      img.src = commit.gravatar;
     }
 
     var style = {
-      width: this.tooltip.outerWidth(true),
-      height: this.tooltip.outerHeight(true),
+      width: this.getOuter('Width', t),
+      height: this.getOuter('Height', t),
       top: pos[1] + this.config.tooltip.offset.top,
       left: pos[0] + this.config.tooltip.offset.left
     };
@@ -419,14 +423,11 @@ NetworkView.prototype.drawActiveCommit = function() {
       posClass[0] = 'top';
     }
 
-    this.tooltip
-      .removeClass('top-left top-center top-right bottom-left bottom-center bottom-right')
-      .addClass(posClass.join('-'))
-      .css({
-        left: style.left,
-        top: style.top,
-        opacity: 1
-      });
+    t.className = 'network-tooltip ' + posClass.join('-');
+
+    ts.left = style.left + 'px';
+    ts.top = style.top + 'px';
+    ts.opacity = 1;
   }
 };
 
@@ -552,7 +553,7 @@ NetworkView.prototype.drawXAxis = function() {
             this.ctx.save();
             this.ctx.textAlign = 'left';
             this.ctx.textBaseline = 'top';
-            this.ctx.font  = this.getFontStyle($.extend({}, this.config.xAxis.font, {style:'bold'}));
+            this.ctx.font  = this.getFontStyle(deepmerge(this.config.xAxis.font, {style:'bold'}));
 
             var text = this.config.lang.shortMonths[cmp[1]-1] + '\' ' + cmp[0].slice(-2);
             this.ctx.fillText(text, xPos - this.config.xAxis.font.size/2, 5);
@@ -756,7 +757,7 @@ NetworkView.prototype.mouseMove = function(e) {
         if (this.state.activeCommit != hoveredCommit) {
           this.state.activeCommit = hoveredCommit;
 
-          this.canvas[0].style.cursor = !!hoveredCommit ? 'pointer' : 'move';
+          this.canvas.style.cursor = !!hoveredCommit ? 'pointer' : 'move';
 
           return true;
         }
@@ -766,7 +767,7 @@ NetworkView.prototype.mouseMove = function(e) {
         if (this.state.activeUser != hoveredUser) {
           this.state.activeUser = hoveredUser;
 
-          this.canvas[0].style.cursor = !!hoveredUser ? 'pointer' : 'move';
+          this.canvas.style.cursor = !!hoveredUser ? 'pointer' : 'move';
 
           return true;
         }
@@ -1068,4 +1069,22 @@ NetworkView.prototype.focusCommit = function(commit, draw) {
   if (draw || draw === undefined) {
     requestAnimationFrame(this.drawAll.bind(this));
   }
+};
+
+/**
+ * Create a DROM node from HTML
+ */
+NetworkView.prototype.createHTMLNode = function(str) {
+  var h = document.implementation.createHTMLDocument();
+  h.body.innerHTML = str;
+  return h.body.children[0];
+};
+
+/**
+ * Get element outer width/height
+ */
+NetworkView.prototype.getOuter = function(t, el) {
+  var s = getComputedStyle(el);
+  var m = (t == 'Width') ? [s.marginLeft, s.marginRight] : [s.marginTop, s.marginBottom];
+  return el['offset'+t] + parseInt(m[0]) + parseInt(m[1]);
 };

@@ -16,6 +16,7 @@
 }
 
 .network-tooltip {
+  display:none;
   position:absolute;
   border:2px solid #ddd;
   background:#fff;

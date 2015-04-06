@@ -1,0 +1,10 @@
+{
+  "name": "Github-Network-Example",
+  "version": "0.0.0",
+  "dependencies": {
+    "selectize": "~0.12.0",
+    "bootswatch-dist": "simplex",
+    "awesome-bootstrap-checkbox": "~0.3.3",
+    "Github-Network": "https://github.com/mistic100/Github-Network.git#master"
+  }
+}

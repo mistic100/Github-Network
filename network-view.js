@@ -50,6 +50,11 @@ var NetworkView = function(container, options, data) {
 NetworkView.DEFAULTS = deepmerge(Network.DEFAULTS, {
   autoResize: false,
 
+  offset: {
+    top: 0,
+    left: 0
+  },
+
   border: {
     width: 1,
     color: '#DDDDDD'
@@ -264,10 +269,12 @@ NetworkView.prototype.refresh = function() {
     return;
   }
 
+  var offset = this.getOffset(this.container);
+
   this.prop.width = this.container.offsetWidth;
   this.prop.height = this.container.offsetHeight;
-  this.prop.top = this.container.offsetTop;
-  this.prop.left = this.container.offsetLeft;
+  this.prop.top = offset.top + this.config.offset.top;
+  this.prop.left = offset.left + this.config.offset.left;;
   this.prop.gridWidth = this.prop.width - this.config.yAxis.width;
   this.prop.gridHeight = this.prop.height - this.config.xAxis.height;
 
@@ -1152,4 +1159,23 @@ NetworkView.prototype.fmt = function(str, args) {
 
     return value;
   });
+};
+
+/**
+ * Get absolute element offset
+ */
+NetworkView.prototype.getOffset = function(el) {
+  var posX = 0;
+  var posY = 0;
+
+  while (el) {
+    posX+= el.offsetLeft - el.scrollLeft + el.clientLeft;
+    posY+= el.offsetTop - el.scrollTop + el.clientTop;
+    el = el.offsetParent;
+  }
+
+  return {
+    left: posX,
+    top: posY
+  };
 };

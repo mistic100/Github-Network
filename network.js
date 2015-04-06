@@ -28,6 +28,7 @@ Network.DEFAULTS = {
     lineWidth: 2,
 
     labels: {
+      enabled: true,
       background: 'rgba(0,0,0,0.8)',
       padding: 5,
       arrowSize: 8,
@@ -145,7 +146,7 @@ Network.prototype.render = function() {
   }, this);
 
   // draw labels
-  if (this.config.network.labels) {
+  if (this.config.network.labels.enabled) {
     this.data.meta.users.every(function(user, i) {
       var block = this.data.blocksById[user.name];
 

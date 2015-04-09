@@ -5,6 +5,8 @@
 /bower_components/**/LICENSE
 /bower_components/microplugin
 /bower_components/sifter
+/bower_components/octicons/*
+!/bower_components/octicons/octicons
 /bower_components/selectize/*
 !/bower_components/selectize/dist
 /bower_components/selectize/dist/less
